@@ -51,7 +51,7 @@ public class App {
         }
 
         // 6) Delete (optional)
-//        repo.deleteById(userId);
-//        System.out.println("Deleted user with id = " + userId);
-    }
+        repo.deleteById(userId);
+        System.out.println("Deleted user with id = " + userId);
+   }
 }

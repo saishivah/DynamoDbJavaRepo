@@ -1,6 +1,6 @@
 package com.example.dynamo;
 
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
@@ -14,16 +14,29 @@ public class DynamoConfig {
     private final DynamoDbClient dynamoDbClient;
     private final DynamoDbEnhancedClient enhancedClient;
 
-    public DynamoConfig() {
-        // Uses credentials from aws configure / env vars / instance profile
+    private final String profileName;
+    private final Region region;
+
+    // --- NEW: constructor with profile ---
+    public DynamoConfig(String profileName, Region region) {
+        this.profileName = profileName;
+        this.region = region;
+
         this.dynamoDbClient = DynamoDbClient.builder()
-                .region(Region.US_EAST_1) // change if needed
-                .credentialsProvider(DefaultCredentialsProvider.create())
+                .region(region)
+                .credentialsProvider(
+                        ProfileCredentialsProvider.create(profileName)
+                )
                 .build();
 
         this.enhancedClient = DynamoDbEnhancedClient.builder()
                 .dynamoDbClient(dynamoDbClient)
                 .build();
+    }
+
+    // Convenience constructor (defaults to your usual settings)
+    public DynamoConfig() {
+        this("test", Region.US_EAST_1);
     }
 
     public DynamoDbEnhancedClient enhancedClient() {
