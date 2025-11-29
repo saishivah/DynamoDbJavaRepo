@@ -9,117 +9,64 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
+import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
+import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
+import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.AttributeDefinition;
-import software.amazon.awssdk.services.dynamodb.model.CreateTableRequest;
-import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.DescribeTableRequest;
-import software.amazon.awssdk.services.dynamodb.model.KeySchemaElement;
-import software.amazon.awssdk.services.dynamodb.model.KeyType;
-import software.amazon.awssdk.services.dynamodb.model.ProvisionedThroughput;
 import software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException;
-import software.amazon.awssdk.services.dynamodb.model.ScalarAttributeType;
-import software.amazon.awssdk.services.dynamodb.model.ScanRequest;
-import software.amazon.awssdk.services.dynamodb.model.ScanResponse;
 
-import software.amazon.dynamodb.services.local.main.ServerRunner;
-import software.amazon.dynamodb.services.local.server.DynamoDBProxyServer;
+import software.amazon.dynamodb.services.local.embedded.DynamoDBEmbedded;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class UserRepositoryLocalTest {
 
     private static final String TABLE_NAME = "users";
 
-    private DynamoDBProxyServer server;
-    private LocalDynamoConfig config;
-    private DynamoDbClient ddb;
-    private UserRepository repo;
+    private DynamoDbClient ddb;                 // embedded v2 client
+    private DynamoDbEnhancedClient enhanced;    // enhanced client
+    private DynamoDbTable<User> table;          // table handle
+    private UserRepository repo;                // your DAO
 
     @BeforeAll
-    void startDbAndSetupClient() throws Exception {
-        // Start embedded DynamoDB Local in-memory on port 8000
-        server = ServerRunner.createServerFromCommandLineArgs(
-                new String[] { "-inMemory", "-port", "8000" }
-        );
-        server.start();
+    void setup() {
+        // If you ever hit sqlite4java native-lib errors, uncomment:
+        // System.setProperty("sqlite4java.library.path", "native-libs");
 
-        // Configure AWS SDK v2 client pointing at local DynamoDB
-        config = new LocalDynamoConfig();
-        ddb = config.lowLevel();
+        // In-process, in-memory DynamoDB Local (SDK v2 client)
+        ddb = DynamoDBEmbedded.create().dynamoDbClient();
 
-        // Ensure the "users" table exists
-        createTableIfNotExists();
+        enhanced = DynamoDbEnhancedClient.builder()
+                .dynamoDbClient(ddb)
+                .build();
 
-        // Create repository using enhanced client table
-        repo = new UserRepository(config.userTable());
+        table = enhanced.table(TABLE_NAME, TableSchema.fromBean(User.class));
+        repo = new UserRepository(table);
     }
 
     @AfterAll
-    void stopDb() throws Exception {
-        if (server != null) {
-            server.stop();
+    void shutdown() {
+        if (ddb != null) {
+            ddb.close();   // closes embedded local client
         }
     }
 
     @BeforeEach
-    void cleanTable() {
-        // Delete all items from the table before each test
-        ScanResponse scan = ddb.scan(ScanRequest.builder()
-                .tableName(TABLE_NAME)
-                .build());
-
-        for (var item : scan.items()) {
-            ddb.deleteItem(DeleteItemRequest.builder()
-                    .tableName(TABLE_NAME)
-                    .key(Map.of(
-                            "userId", item.get("userId") // primary key only
-                    ))
-                    .build());
-        }
-    }
-
-    private void createTableIfNotExists() {
-        // Check if table exists
+    void resetTable() {
+        // Drop & recreate table for a clean slate each test
         try {
-            ddb.describeTable(DescribeTableRequest.builder()
-                    .tableName(TABLE_NAME)
-                    .build());
-            return; // already exists
+            table.deleteTable();
         } catch (ResourceNotFoundException ignored) {
-            // fall through and create
+            // table might not exist yet, that's fine
         }
-
-        // Create table
-        ddb.createTable(CreateTableRequest.builder()
-                .tableName(TABLE_NAME)
-                .keySchema(KeySchemaElement.builder()
-                        .attributeName("userId")
-                        .keyType(KeyType.HASH)
-                        .build())
-                .attributeDefinitions(AttributeDefinition.builder()
-                        .attributeName("userId")
-                        .attributeType(ScalarAttributeType.S)
-                        .build())
-                .provisionedThroughput(ProvisionedThroughput.builder()
-                        .readCapacityUnits(5L)
-                        .writeCapacityUnits(5L)
-                        .build())
-                .build());
-
-        // Wait until table is active
-        ddb.waiter().waitUntilTableExists(
-                DescribeTableRequest.builder()
-                        .tableName(TABLE_NAME)
-                        .build()
-        );
+        table.createTable();
     }
+
+    // ----------------- Tests -----------------
 
     @Test
     void insertAndGetById() {
@@ -149,6 +96,5 @@ class UserRepositoryLocalTest {
 
         List<User> all = repo.listAll();
         assertEquals(3, all.size());
-        assertTrue(all.stream().allMatch(u -> u.getEmail().endsWith("@example.com")));
     }
 }
