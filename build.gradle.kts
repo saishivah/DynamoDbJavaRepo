@@ -16,6 +16,7 @@ java {
 }
 
 repositories {
+    mavenLocal()
     mavenCentral()
 }
 
@@ -31,7 +32,7 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.7.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    implementation("software.amazon.dynamodb:DynamoDBLocal:3.1.0")
+    testImplementation("software.amazon.dynamodb:DynamoDBLocal:3.1.0")
 }
 
 tasks.test {
