@@ -39,7 +39,7 @@ public class LocalDynamoConfig {
         return client;
     }
 
-    public DynamoDbTable<com.example.dynamo.User> userTable() {
+    public DynamoDbTable<User> userTable() {
         return enhanced.table(TABLE_NAME, TableSchema.fromBean(User.class));
     }
 }
